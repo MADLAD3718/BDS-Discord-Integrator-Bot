@@ -1,21 +1,19 @@
-const { ChannelType, ApplicationCommandOptionType } = require('discord.js');
+const { SlashCommandBuilder } = require('discord.js');
 
-module.exports.data = {
-	name: 'voice',
-	description: 'Connect a voice channel with BDS for proximity chat.',
-	options: [
-		{
-			name: 'channel',
-			description: 'Voice channel to initialize as the proximity chat origin.',
-			type: ApplicationCommandOptionType.Channel,
-			channelType: [ChannelType.GuildVoice],
-			required: true
-		},
-		{
-			name: 'server-uuid',
-			description: "The UUID of the server you're connecting the chat feed to."	,
-			type: ApplicationCommandOptionType.String,
-			required: true
-		}
-	]
-};
+const data = new SlashCommandBuilder()
+	.setName('voice')
+	.setDefaultMemberPermissions(1 << 3)
+	.setDMPermission(false)
+	.setDescription('Connect this text channel with BDS chat feed.')
+	.addChannelOption(option => 
+		option
+			.setName('channel')
+			.setDescription('Voice channel to initialize as the proximity chat origin.')
+			.setRequired(true))
+	.addStringOption(option =>
+		option
+			.setName('server-uuid')
+			.setDescription("The UUID of the server you're connecting to for proximity chat.")
+			.setRequired(true));
+
+module.exports.data = data;
