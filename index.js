@@ -130,7 +130,7 @@ app.post("/api", async (req, res) => {
 			}).then(channel => {
 				channel.setParent(lobby.parentId);
 				servers[serverUUID].voice.groups[req.body.group] = channel.id;
-				for (const member of lobby.members) {
+				for (const member of lobby?.members) {
 					req.body.members.forEach(name => {
 						try {
 							if (users[name].id === member['1'].id) {
@@ -159,7 +159,7 @@ app.post("/api", async (req, res) => {
 		const serverGroup = servers[serverUUID].voice.groups[req.body.group];
 		console.log(`Group ${req.body.group} gained new member ${req.body.newMember}`);
 		const channel = client.channels.cache.get(serverGroup);
-		for (const member of lobby.members) {
+		for (const member of lobby?.members) {
 			try {
 				if (users[req.body.newMember].id === member['1'].id) {
 					await member['1'].voice.setChannel(channel);
@@ -180,7 +180,7 @@ app.post("/api", async (req, res) => {
 			const serverGroup = servers[serverUUID].voice.groups[req.body.group];
 			console.log(`Group ${req.body.group} lost member ${req.body.removedMember}`);
 			const channel = await client.channels.fetch(serverGroup).then(channel => { return channel; });
-			for (const member of channel.members) {
+			for (const member of channel?.members) {
 				try {
 					if (users[req.body.removedMember].id === member['1'].id) {
 						await member['1'].voice.setChannel(lobby);
@@ -205,7 +205,7 @@ app.post("/api", async (req, res) => {
 			delete servers[serverUUID].voice.groups[req.body.group];
 			if (!lobby) return;
 			if (!voiceChannel) console.log(`No VC?`)
-			for (const member of voiceChannel.members) {
+			for (const member of voiceChannel?.members) {
 				await member['1'].voice.setChannel(lobby);
 			}
 			voiceChannel.delete();
@@ -225,7 +225,7 @@ app.post("/api", async (req, res) => {
 		try {
 			const deletedGroupChannel = client.channels.cache.get(servers[serverUUID].voice.groups[deletedGroupId]);
 			const mergedGroupChannel = client.channels.cache.get(servers[serverUUID].voice.groups[mergedGroupId]);
-			for (const member of deletedGroupChannel.members) {
+			for (const member of deletedGroupChannel?.members) {
 				await member['1'].voice.setChannel(mergedGroupChannel);
 			}
 			delete servers[serverUUID].voice.groups[deletedGroupId];
