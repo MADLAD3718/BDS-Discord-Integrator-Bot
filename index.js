@@ -8,33 +8,16 @@ const app = express()
 app.use(express.json()) // for parsing application/json
 app.use(express.urlencoded({ extended: true })) // for parsing application/x-www-form-urlencoded
 
-app.get("/", (req, res) => {
-	res.send(JSON.parse(fs.readFileSync('database.json')));
-})
-
 let database = JSON.parse(fs.readFileSync('database.json'));
 if (!database["users"]) database["users"] = {};
 if (!database["servers"]) database["servers"] = {};
-if (!database["pending"]) database["pending"] = {};
+database["pending"] = {};
 fs.writeFileSync('database.json', JSON.stringify(database));
-
-setInterval(() => {
-	// console.log(`Scrubbing pending connections.`)
-	for (const connection in database["pending"]) {
-		const minutesAgo = (new Date().getTime() - database["pending"][connection].time) / 60000;
-		// console.log(`Pending connection for ${connection} created ${minutesAgo} minutes ago.`)
-		if (minutesAgo >= 5) {
-			console.log(`Deleting pending connection for ${connection}`)
-			delete database["pending"][connection];
-			fs.writeFileSync('database.json', JSON.stringify(database));
-		}
-	}
-}, 30 * 1000) // Run every 30 seconds
 
 // Handle HTTP Requests
 app.post("/api", async (req, res) => {
 	const type = req.header('mc-data-type');
-	console.log(`Recieving ${type} request from ${req.header('server-uuid')}`)
+	console.log(`Receiving ${type} request from ${req.header('server-uuid')}`)
 	console.log(req.body);
 	switch (type) {
 		case 'account-link':
@@ -55,10 +38,17 @@ app.post("/api", async (req, res) => {
 				} else {
 					database["pending"][req.body.username] = {
 						code: code,
-						time: new Date().getTime(),
 						origin: req.header('server-uuid')
 					}
 					fs.writeFileSync('database.json', JSON.stringify(database));
+					setTimeout(() => {
+						console.log(`Deleting pending connection for ${req.body.username}`)
+						database["servers"][req.header('server-uuid')].queue.push(
+							`tellraw "${req.body.username}" {"rawtext":[{"text":"Your pending link code has expired! You can use the link command to create a new one."}]}`
+						);
+						delete database["pending"][req.body.username];
+						fs.writeFileSync('database.json', JSON.stringify(database));
+					}, 5 * 60 * 1000);
 					res.set('Content-Type', 'text/plain').json(`Use §d/link§r in DMs with the BDS Integration bot using code §a${code}§r to link your Minecraft account with Discord.`);
 				}
 			}
