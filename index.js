@@ -12,7 +12,7 @@ let database = JSON.parse(fs.readFileSync('database.json'));
 if (!database["users"]) database["users"] = {};
 if (!database["servers"]) database["servers"] = {};
 database["pending"] = {};
-fs.writeFileSync('database.json', JSON.stringify(database));
+fs.writeFile('database.json', JSON.stringify(database), () => { });
 
 // Handle HTTP Requests
 app.post("/api", async (req, res) => {
@@ -27,7 +27,7 @@ app.post("/api", async (req, res) => {
 					database["servers"][req.header('server-uuid')].queue.push(
 						`tag "${req.body.username}" add linked`
 					);
-					fs.writeFileSync('database.json', JSON.stringify(database));
+					fs.writeFile('database.json', JSON.stringify(database), () => { });
 					res.set('Content-Type', 'text/plain').json(`Your link status has been updated on this server!`);
 				} else {
 					res.set('Content-Type', 'text/plain').json(`You have already linked your account with §9${database["users"][req.body.username].username}#${database["users"][req.body.username].discriminator}§r!`);
@@ -40,14 +40,14 @@ app.post("/api", async (req, res) => {
 						code: code,
 						origin: req.header('server-uuid')
 					}
-					fs.writeFileSync('database.json', JSON.stringify(database));
+					fs.writeFile('database.json', JSON.stringify(database), () => { });
 					setTimeout(() => {
 						console.log(`Deleting pending connection for ${req.body.username}`)
 						database["servers"][req.header('server-uuid')].queue.push(
 							`tellraw "${req.body.username}" {"rawtext":[{"text":"Your pending link code has expired! You can use the link command to create a new one."}]}`
 						);
 						delete database["pending"][req.body.username];
-						fs.writeFileSync('database.json', JSON.stringify(database));
+						fs.writeFile('database.json', JSON.stringify(database), () => { });
 					}, 5 * 60 * 1000);
 					res.set('Content-Type', 'text/plain').json(`Use §d/link§r in DMs with the BDS Integration bot using code §a${code}§r to link your Minecraft account with Discord.`);
 				}
@@ -57,7 +57,7 @@ app.post("/api", async (req, res) => {
 			if (database["users"][req.body.username]) {
 				const discordUser = `${database["users"][req.body.username].username}#${database["users"][req.body.username].discriminator}`
 				delete database["users"][req.body.username];
-				fs.writeFileSync('database.json', JSON.stringify(database));
+				fs.writeFile('database.json', JSON.stringify(database), () => { });
 				database["servers"][req.header('server-uuid')].queue.push(
 					`tag "${req.body.username}" remove linked`,
 					`tellraw "${req.body.username}" {"rawtext":[{"text":"You have unlinked your account from §9${discordUser}§r."}]}`
@@ -95,7 +95,7 @@ app.post("/api", async (req, res) => {
 				console.log(`Attempting to create group ${groupId} with members ${members}`)
 				createGroup(database["users"], lobby, groupId, members).then(channelId => {
 					database["servers"][req.header("server-uuid")].voice.groups[groupId] = channelId;
-					fs.writeFileSync('database.json', JSON.stringify(database));
+					fs.writeFile('database.json', JSON.stringify(database), () => { });
 				});
 			});
 			res.set('Content-Type', 'text/plain').send(req.body);
@@ -150,7 +150,7 @@ app.post("/api", async (req, res) => {
 					groupChannel.delete().catch(console.error);
 				});
 				delete database["servers"][req.header("server-uuid")].voice.groups[groupId];
-				fs.writeFileSync('database.json', JSON.stringify(database));
+				fs.writeFile('database.json', JSON.stringify(database), () => { });
 			})
 			res.set('Content-Type', 'text/plain').send(req.body);
 			break;
@@ -205,7 +205,7 @@ app.post("/api", async (req, res) => {
 					queue: []
 				}
 			}
-			fs.writeFileSync('database.json', JSON.stringify(database));
+			fs.writeFile('database.json', JSON.stringify(database), () => { });
 	}
 })
 
@@ -218,7 +218,7 @@ app.get("/api", async (req, res) => {
 			res.set('Content-Type', 'text/plain').json(database["servers"][serverUUID].queue);
 			// console.log(`Resetting Queue for server ${serverUUID}`)
 			database["servers"][serverUUID].queue = [];
-			fs.writeFileSync('database.json', JSON.stringify(database));
+			fs.writeFile('database.json', JSON.stringify(database), () => { });
 		}
 	}
 })
@@ -266,156 +266,142 @@ const rest = new REST({ version: '10' }).setToken('MTAzNjY5ODc0ODkzNzU3NjQ1OQ.Gm
 // Handle Command Interactions
 client.on('interactionCreate', async interaction => {
 	if (!interaction.isChatInputCommand()) return;
-	// Account Linking
-	if (interaction.commandName === 'link') {
-		let username = "";
-		let serverUUID = "";
-		code = interaction.options.getInteger('code').toString().padStart(4, '0');
-		for (const connection in database["pending"]) {
-			if (code === database["pending"][connection].code) {
-				username = connection;
-				database["users"][connection] = {
-					id: interaction.user.id,
-					username: interaction.user.username,
-					discriminator: interaction.user.discriminator
-				};
-				serverUUID = database["pending"][connection].origin;
-				delete database["pending"][connection];
-				fs.writeFileSync('database.json', JSON.stringify(database));
-			}
-		}
-		if (username !== "") {
-			database["servers"][serverUUID].queue.push(
-				`tag "${username}" add linked`,
-				`tellraw "${username}" {"rawtext":[{"text":"Your account has been successfully linked with §9${interaction.user.username}#${interaction.user.discriminator}§r!"}]}`
-			);
-			await interaction.reply({ content: `You have linked this discord account with ${username}.`, ephemeral: true });
-		} else {
-			await interaction.reply({ content: `There are currently no pending connections for code ${code}.`, ephemeral: true });
-		}
-	}
-
-	// Chat Feed Connections
-	if (interaction.commandName === 'chat') {
-		const serverUUID = interaction.options.getString('server-uuid');
-		const channel = interaction.channelId;
-		const allowChannelMessages = interaction.options.getBoolean('allow-channel-messages');
-
-		if (database["servers"][serverUUID].chat.enabled === false) {
-			await interaction.reply({ content: `Chat integration is not enabled for this server!`, ephemeral: true });
-		} else {
-			if (Object.keys(database["servers"][serverUUID].chat.channels).includes(channel) === false) {
-				database["servers"][serverUUID].chat.channels[channel] = allowChannelMessages;
-				database["servers"][serverUUID].queue.push(
-					`tellraw @a {"rawtext":[{"text":"Server §9${interaction.guild.name}§r subscribed to chat feed in §9#${interaction.channel.name}§r, with §7allow channel messages§r set to §a${allowChannelMessages}§r."}]}`
-				);
-				fs.writeFileSync('database.json', JSON.stringify(database));
-				await interaction.reply({ content: `Channel ${interaction.channel} subscribed to server \`${serverUUID}\` chat feed with allow channel messages set to ${allowChannelMessages}.`, ephemeral: true });
-			} else {
-				await interaction.reply({ content: `Channel ${interaction.channel} is already subscribed to server ${serverUUID} chat feed!`, ephemeral: true });
-			}
-		}
-	}
-
-	// Voice Chat Connections
-	if (interaction.commandName === 'voice') {
-		const serverUUID = interaction.options.getString('server-uuid');
-		const channel = interaction.options.getChannel('channel');
-		// If the channel provided was not a voice channel
-		if (channel.type !== 2) {
-			await interaction.reply({ content: `${channel} is not a valid voice channel!`, ephemeral: true });
-			return;
-		}
-		// If the server does not exist
-		if (!database["servers"][serverUUID]) {
-			await interaction.reply({ content: `Server \`${serverUUID}\` does not exist!`, ephemeral: true });
-			return;
-		}
-		// If server voice is disabled
-		if (database["servers"][serverUUID].voice.enabled === false) {
-			await interaction.reply({ content: `Voice is not enabled on server \`${serverUUID}\`.`, ephemeral: true });
-			return;
-		}
-		// If server is already subscribed to voice
-		if (database["servers"][serverUUID].voice.channels.length === 1) {
-			// If the subscribed voice channel is the same as the requested one
-			if (database["servers"][serverUUID].voice.channels.includes(channel.id)) {
-				await interaction.reply({ content: `Channel ${channel} is already subscribed to server \`${serverUUID}\` proximity chat!`, ephemeral: true });
-				return;
-			}
-			await interaction.reply({ content: `Server \`${serverUUID}\` already has a channel subscribed to proximity chat!`, ephemeral: true });
-			return;
-		}
-		// Else eveything should be valid
-		database["servers"][serverUUID].voice.lobby = channel.id;
-		fs.writeFileSync('database.json', JSON.stringify(database));
-		database["servers"][serverUUID].queue.push(
-			`tellraw @a {"rawtext":[{"text":"Server §9${interaction.guild.name}§r subscribed to proximity chat in §9${channel.name}§r."}]}`
-		);
-		await interaction.reply({ content: `Channel ${channel} subscribed to server \`${serverUUID}\` proximity chat.`, ephemeral: true });
-	}
-
-	// Unsubscribe
-	if (interaction.commandName === 'unsub') {
-		// Chat
-		if (interaction.options.getSubcommand() === 'chat') {
-			const channel = interaction.channel.id;
-			let found = false;
-			for (const serverUUID in database["servers"]) {
-				if (database["servers"][serverUUID].chat.channels[channel] !== undefined) {
-					delete database["servers"][serverUUID].chat.channels[channel];
-					found = true;
-					database["servers"][serverUUID].queue.push(
-						`tellraw @a {"rawtext":[{"text":"Server §9${interaction.guild.name}§r unsubscribed §9#${interaction.channel.name}§r from chat feed."}]}`
-					);
-					interaction.reply({ content: `Unsubscribed channel ${client.channels.cache.get(channel)} from server \`${serverUUID}\` chat feed.`, ephemeral: true });
+	const serverUUID = interaction.options.getString('server-uuid') ?? undefined;
+	const channel = interaction.options.getChannel('channel');
+	switch (interaction.commandName) {
+		case 'link':
+			let username = "";
+			let originUUID = "";
+			code = interaction.options.getInteger('code').toString().padStart(4, '0');
+			for (const connection in database["pending"]) {
+				if (code === database["pending"][connection].code) {
+					username = connection;
+					database["users"][connection] = {
+						id: interaction.user.id,
+						username: interaction.user.username,
+						discriminator: interaction.user.discriminator
+					};
+					originUUID = database["pending"][connection].origin;
+					delete database["pending"][connection];
+					fs.writeFile('database.json', JSON.stringify(database), () => { });
 				}
 			}
-			if (found === false) {
-				await interaction.reply({ content: `This channel isn't subscribed to any chat feeds!`, ephemeral: true });
-				return;
+			if (username !== "") {
+				database["servers"][originUUID].queue.push(
+					`tag "${username}" add linked`,
+					`tellraw "${username}" {"rawtext":[{"text":"Your account has been successfully linked with §9${interaction.user.username}#${interaction.user.discriminator}§r!"}]}`
+				);
+				await interaction.reply({ content: `You have linked this discord account with ${username}.`, ephemeral: true });
+			} else {
+				await interaction.reply({ content: `There are currently no pending connections for code ${code}.`, ephemeral: true });
 			}
-			fs.writeFileSync('database.json', JSON.stringify(database));
-		}
-		// Voice
-		if (interaction.options.getSubcommand() === 'voice') {
-			const channel = interaction.options.getChannel('channel');
+			break;
+		case 'chat':
+			const allowChannelMessages = interaction.options.getBoolean('allow-channel-messages');
+			if (database["servers"][serverUUID].chat.enabled === false) {
+				await interaction.reply({ content: `Chat integration is not enabled for this server!`, ephemeral: true });
+			} else {
+				if (Object.keys(database["servers"][serverUUID].chat.channels).includes(channel) === false) {
+					database["servers"][serverUUID].chat.channels[channel] = allowChannelMessages;
+					database["servers"][serverUUID].queue.push(
+						`tellraw @a {"rawtext":[{"text":"Server §9${interaction.guild.name}§r subscribed to chat feed in §9#${interaction.channel.name}§r, with §7allow channel messages§r set to §a${allowChannelMessages}§r."}]}`
+					);
+					fs.writeFile('database.json', JSON.stringify(database), () => { });
+					await interaction.reply({ content: `Channel ${interaction.channel} subscribed to server \`${serverUUID}\` chat feed with allow channel messages set to ${allowChannelMessages}.`, ephemeral: true });
+				} else {
+					await interaction.reply({ content: `Channel ${interaction.channel} is already subscribed to server ${serverUUID} chat feed!`, ephemeral: true });
+				}
+			}
+			break;
+		case 'voice':
 			// If the channel provided was not a voice channel
 			if (channel.type !== 2) {
 				await interaction.reply({ content: `${channel} is not a valid voice channel!`, ephemeral: true });
 				return;
 			}
-			let found = false;
-			for (const serverUUID in database["servers"]) {
-				// If server has the channel id
-				if (database["servers"][serverUUID].voice.lobby === channel.id) {
-					delete database["servers"][serverUUID].voice.lobby;
-					database["servers"][serverUUID].voice.groups = {};
-					fs.writeFileSync('database.json', JSON.stringify(database));
-					database["servers"][serverUUID].queue.push(
-						`tellraw @a {"rawtext":[{"text":"Server §9${interaction.guild.name}§r unsubscribed §9${channel.name}§r from proximity chat."}]}`
-					);
-					interaction.reply({ content: `Unsubscribed ${channel} from server \`${serverUUID}\` proximity chat.`, ephemeral: true });
-					found = true;
+			// If the server does not exist
+			if (!database["servers"][serverUUID]) {
+				await interaction.reply({ content: `Server \`${serverUUID}\` does not exist!`, ephemeral: true });
+				return;
+			}
+			// If server voice is disabled
+			if (database["servers"][serverUUID].voice.enabled === false) {
+				await interaction.reply({ content: `Voice is not enabled on server \`${serverUUID}\`.`, ephemeral: true });
+				return;
+			}
+			// If server is already subscribed to voice
+			if (database["servers"][serverUUID].voice.channels.length === 1) {
+				// If the subscribed voice channel is the same as the requested one
+				if (database["servers"][serverUUID].voice.channels.includes(channel.id)) {
+					await interaction.reply({ content: `Channel ${channel} is already subscribed to server \`${serverUUID}\` proximity chat!`, ephemeral: true });
+					return;
 				}
+				await interaction.reply({ content: `Server \`${serverUUID}\` already has a channel subscribed to proximity chat!`, ephemeral: true });
+				return;
 			}
-			// If no server was found
-			if (found === false) {
-				await interaction.reply({ content: `${channel} isn't subscribed to any server's proximity chat!`, ephemeral: true });
+			// Else eveything should be valid
+			database["servers"][serverUUID].voice.lobby = channel.id;
+			fs.writeFile('database.json', JSON.stringify(database), () => { });
+			database["servers"][serverUUID].queue.push(
+				`tellraw @a {"rawtext":[{"text":"Server §9${interaction.guild.name}§r subscribed to proximity chat in §9${channel.name}§r."}]}`
+			);
+			await interaction.reply({ content: `Channel ${channel} subscribed to server \`${serverUUID}\` proximity chat.`, ephemeral: true });
+			break;
+		case 'unsub':
+			let found = false;
+			switch (interaction.options.getSubcommand()) {
+				case 'chat':
+					for (const serverUUID in database["servers"]) {
+						if (database["servers"][serverUUID].chat.channels[channel] !== undefined) {
+							delete database["servers"][serverUUID].chat.channels[channel];
+							found = true;
+							database["servers"][serverUUID].queue.push(
+								`tellraw @a {"rawtext":[{"text":"Server §9${interaction.guild.name}§r unsubscribed §9#${interaction.channel.name}§r from chat feed."}]}`
+							);
+							interaction.reply({ content: `Unsubscribed channel ${client.channels.cache.get(channel)} from server \`${serverUUID}\` chat feed.`, ephemeral: true });
+						}
+					}
+					if (found === false) {
+						await interaction.reply({ content: `This channel isn't subscribed to any chat feeds!`, ephemeral: true });
+						return;
+					}
+					fs.writeFile('database.json', JSON.stringify(database), () => { });
+					break;
+				case 'voice':
+					// If the channel provided was not a voice channel
+					if (channel.type !== 2) {
+						await interaction.reply({ content: `${channel} is not a valid voice channel!`, ephemeral: true });
+						return;
+					}
+					for (const serverUUID in database["servers"]) {
+						// If server has the channel id
+						if (database["servers"][serverUUID].voice.lobby === channel.id) {
+							delete database["servers"][serverUUID].voice.lobby;
+							database["servers"][serverUUID].voice.groups = {};
+							fs.writeFile('database.json', JSON.stringify(database), () => { });
+							database["servers"][serverUUID].queue.push(
+								`tellraw @a {"rawtext":[{"text":"Server §9${interaction.guild.name}§r unsubscribed §9${channel.name}§r from proximity chat."}]}`
+							);
+							interaction.reply({ content: `Unsubscribed ${channel} from server \`${serverUUID}\` proximity chat.`, ephemeral: true });
+							found = true;
+						}
+					}
+					// If no server was found
+					if (found === false) {
+						await interaction.reply({ content: `${channel} isn't subscribed to any server's proximity chat!`, ephemeral: true });
+					}
+					break;
 			}
-		}
-	}
-
-	// Delete
-	if (interaction.commandName === 'delete') {
-		const serverUUID = interaction.options.getString('server-uuid');
-		if (database["servers"][serverUUID]) {
-			delete database["servers"][serverUUID];
-			fs.writeFileSync('database.json', JSON.stringify(database));
-			await interaction.reply({ content: `Deleted server \`${serverUUID}\` from database.`, ephemeral: true });
-		} else {
-			await interaction.reply({ content: `Server \`${serverUUID}\` does not exist!`, ephemeral: true });
-		}
+			break;
+		case 'delete':
+			if (database["servers"][serverUUID]) {
+				delete database["servers"][serverUUID];
+				fs.writeFile('database.json', JSON.stringify(database), () => { });
+				await interaction.reply({ content: `Deleted server \`${serverUUID}\` from database.`, ephemeral: true });
+			} else {
+				await interaction.reply({ content: `Server \`${serverUUID}\` does not exist!`, ephemeral: true });
+			}
+			break;
 	}
 });
 
@@ -426,7 +412,7 @@ client.on("messageCreate", msg => {
 			if (database["servers"][serverUUID].chat.enabled !== true || database["servers"][serverUUID].chat.channels[msg.channelId] !== true) return;
 			console.log(`Sending "<${msg.author.username}#${msg.author.discriminator}> ${msg.content}" to ${serverUUID}`);
 			database["servers"][serverUUID].queue.push(`tellraw @a {"rawtext":[{"text":"§9<${msg.author.username}#${msg.author.discriminator}>§r ${msg.content}"}]}`);
-			fs.writeFileSync('database.json', JSON.stringify(database));
+			fs.writeFile('database.json', JSON.stringify(database), () => { });
 		}
 	}
 })
