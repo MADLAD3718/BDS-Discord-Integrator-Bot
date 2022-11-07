@@ -42,6 +42,7 @@ app.post("/api", async (req, res) => {
 					}
 					fs.writeFile('database.json', JSON.stringify(database), () => { });
 					setTimeout(() => {
+						if (database["pending"][req.body.username]) return;
 						console.log(`Deleting pending connection for ${req.body.username}`)
 						database["servers"][req.header('server-uuid')].queue.push(
 							`tellraw "${req.body.username}" {"rawtext":[{"text":"Your pending link code has expired! You can use the link command to create a new one."}]}`
@@ -49,7 +50,7 @@ app.post("/api", async (req, res) => {
 						delete database["pending"][req.body.username];
 						fs.writeFile('database.json', JSON.stringify(database), () => { });
 					}, 5 * 60 * 1000);
-					res.set('Content-Type', 'text/plain').json(`Use §d/link§r in DMs with the BDS Integration bot using code §a${code}§r to link your Minecraft account with Discord.`);
+					res.set('Content-Type', 'text/plain').json(`Use the §d/link§r command with your BDS Integration bot using code §a${code}§r to link your Minecraft account with Discord.`);
 				}
 			}
 			break;
@@ -67,6 +68,13 @@ app.post("/api", async (req, res) => {
 			}
 			res.set('Content-Type', 'text/plain').send(`Received`);
 			break;
+		case 'link-check':
+			setTimeout(() => {
+				if (database["users"][req.body.player]) res.set('Content-Type', 'text/plain').send(true);
+				else res.set('Content-Type', 'text/plain').send(false);
+				console.log(`${req.body.player} was ${database["users"][req.body.player] ? `` : `not `}linked.`);
+			}, 5000);
+			break;
 		case 'chat-message':
 			if (database["servers"][req.header('server-uuid')].chat.enabled !== true) return;
 			for (const channelId in database["servers"][req.header('server-uuid')].chat.channels) {
@@ -75,7 +83,7 @@ app.post("/api", async (req, res) => {
 			}
 			res.set('Content-Type', 'text/plain').send(`Received`);
 			break;
-		case "announcement":
+		case 'announcement':
 			if (database["servers"][req.header('server-uuid')].chat.enabled !== true) return;
 			for (const channelId in database["servers"][req.header('server-uuid')].chat.channels) {
 				const channel = client.channels.cache.get(channelId);
