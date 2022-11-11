@@ -4,6 +4,8 @@ const { deleteGroup } = require(`./groups/delete.js`);
 const fs = require('fs');
 const express = require("express")
 const app = express()
+const events = require("events");
+const serverEvents = new events.EventEmitter();
 
 app.use(express.json()) // for parsing application/json
 app.use(express.urlencoded({ extended: true })) // for parsing application/x-www-form-urlencoded
@@ -63,17 +65,20 @@ app.post("/api", async (req, res) => {
 					`tag "${req.body.username}" remove linked`,
 					`tellraw "${req.body.username}" {"rawtext":[{"text":"You have unlinked your account from §9${discordUser}§r."}]}`
 				);
+				console.log(`user unlinked`)
 			} else {
+				console.log(`user was already unlinked`)
 				database["servers"][req.header('server-uuid')].queue.push(`tellraw "${req.body.username}" {"rawtext":[{"text":"You haven't linked your account with Discord!"}]}`);
 			}
 			res.set('Content-Type', 'text/plain').send(`Received`);
 			break;
 		case 'link-check':
 			setTimeout(() => {
-				if (database["users"][req.body.player]) res.set('Content-Type', 'text/plain').send(true);
-				else res.set('Content-Type', 'text/plain').send(false);
+				if (database["users"][req.body.player]) database["servers"][req.header('server-uuid')].queue.push(`tag "${req.body.player}" add linked`);
+				else database["servers"][req.header('server-uuid')].queue.push(`tellraw "${req.body.player}" {"rawtext":[{"text":"This server has proximity voice chat enabled, but you haven't currently linked your Minecraft account with Discord. Use the §a${req.body.prefix} link§r command to link your account."}]}`);
 				console.log(`${req.body.player} was ${database["users"][req.body.player] ? `` : `not `}linked.`);
-			}, 5000);
+			}, 8 * 1000);
+			res.set('Content-Type', 'text/plain').send(`Recieved`);
 			break;
 		case 'chat-message':
 			if (database["servers"][req.header('server-uuid')].chat.enabled !== true) return;
@@ -214,6 +219,11 @@ app.post("/api", async (req, res) => {
 				}
 			}
 			fs.writeFile('database.json', JSON.stringify(database), () => { });
+			break;
+		case 'command-response':
+			serverEvents.emit('commandResponse', req.body.response);
+			res.set('Content-Type', 'text/plain').send(`Received`);
+			break;
 	}
 })
 
@@ -409,6 +419,18 @@ client.on('interactionCreate', async interaction => {
 			} else {
 				await interaction.reply({ content: `Server \`${serverUUID}\` does not exist!`, ephemeral: true });
 			}
+			break;
+		case 'run':
+			if (!database["servers"][serverUUID]) {
+				await interaction.reply({ content: `Server \`${serverUUID}\` does not exist!`, ephemeral: true });
+				return;
+			}
+			database["servers"][serverUUID].queue.push(`run:${interaction.options.getString('command')}`);
+			serverEvents.on('commandResponse', async response => {
+				interaction.reply({ content: response, ephemeral: false }).then(() => {
+					setTimeout(() => interaction.fetchReply().then(reply => reply.delete()), 20000);
+				}).catch(error => {return})
+			});
 			break;
 	}
 });
