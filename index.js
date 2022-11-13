@@ -6,6 +6,7 @@ const express = require("express")
 const app = express()
 const events = require("events");
 const serverEvents = new events.EventEmitter();
+const { accountLink } = require("./events/account_link.js");
 
 app.use(express.json()) // for parsing application/json
 app.use(express.urlencoded({ extended: true })) // for parsing application/x-www-form-urlencoded
@@ -14,6 +15,7 @@ let database = JSON.parse(fs.readFileSync('database.json'));
 if (!database["users"]) database["users"] = {};
 if (!database["servers"]) database["servers"] = {};
 database["pending"] = {};
+module.exports = {serverEvents: serverEvents, database: database};
 fs.writeFile('database.json', JSON.stringify(database), () => { });
 
 // Handle HTTP Requests
@@ -23,38 +25,7 @@ app.post("/api", async (req, res) => {
 	console.log(req.body);
 	switch (type) {
 		case 'account-link':
-			const code = Math.round(Math.random() * 9999).toString().padStart(4, '0');
-			if (database["users"][req.body.username] !== undefined) {
-				if (req.body.hasTag === false) {
-					database["servers"][req.header('server-uuid')].queue.push(
-						`tag "${req.body.username}" add linked`
-					);
-					fs.writeFile('database.json', JSON.stringify(database), () => { });
-					res.set('Content-Type', 'text/plain').json(`Your link status has been updated on this server!`);
-				} else {
-					res.set('Content-Type', 'text/plain').json(`You have already linked your account with §9${database["users"][req.body.username].username}#${database["users"][req.body.username].discriminator}§r!`);
-				}
-			} else {
-				if (database["pending"][req.body.username] !== undefined) {
-					res.set('Content-Type', 'text/plain').json(`You already have a pending request for code §a${database["pending"][req.body.username].code}§r!`);
-				} else {
-					database["pending"][req.body.username] = {
-						code: code,
-						origin: req.header('server-uuid')
-					}
-					fs.writeFile('database.json', JSON.stringify(database), () => { });
-					setTimeout(() => {
-						if (database["pending"][req.body.username]) return;
-						console.log(`Deleting pending connection for ${req.body.username}`)
-						database["servers"][req.header('server-uuid')].queue.push(
-							`tellraw "${req.body.username}" {"rawtext":[{"text":"Your pending link code has expired! You can use the link command to create a new one."}]}`
-						);
-						delete database["pending"][req.body.username];
-						fs.writeFile('database.json', JSON.stringify(database), () => { });
-					}, 5 * 60 * 1000);
-					res.set('Content-Type', 'text/plain').json(`Use the §d/link§r command with your BDS Integration bot using code §a${code}§r to link your Minecraft account with Discord.`);
-				}
-			}
+			accountLink(database, req.header('server-uuid'), req.body.username, req.body.hasTag, res);
 			break;
 		case 'account-unlink':
 			if (database["users"][req.body.username]) {
@@ -429,7 +400,7 @@ client.on('interactionCreate', async interaction => {
 			serverEvents.on('commandResponse', async response => {
 				interaction.reply({ content: response, ephemeral: false }).then(() => {
 					setTimeout(() => interaction.fetchReply().then(reply => reply.delete()), 20000);
-				}).catch(error => {return})
+				}).catch(error => { return })
 			});
 			break;
 	}
