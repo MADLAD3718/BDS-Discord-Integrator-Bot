@@ -419,4 +419,4 @@ client.on("messageCreate", msg => {
 })
 
 client.on("ready", client => console.log(`Logged in as ${client.user.tag}!`));
-client.login('MTAzNjY5ODc0ODkzNzU3NjQ1OQ.GmeWCJ.T3TYj9tq6dnEndNF_8AGxwL19k11y7tgTmnXgM').catch(console.error)
+client.login(/*Token Goes Here*/).catch(console.error)
